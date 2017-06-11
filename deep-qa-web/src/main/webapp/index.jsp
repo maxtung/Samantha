@@ -1,9 +1,9 @@
 <%@page contentType="text/html" pageEncoding="UTF-8"%>
-<%@page import="org.apdplat.qa.model.Question"%>
-<%@page import="org.apdplat.qa.model.Evidence"%>
-<%@page import="org.apdplat.qa.model.CandidateAnswer"%>
-<%@page import="org.apdplat.qa.model.QuestionType"%>
-<%@page import="org.apdplat.qa.SharedQuestionAnsweringSystem"%>
+<%@page import="org.samantha.model.Question"%>
+<%@page import="org.samantha.model.Evidence"%>
+<%@page import="org.samantha.model.CandidateAnswer"%>
+<%@page import="org.samantha.model.QuestionType"%>
+<%@page import="org.samantha.SharedQuestionAnsweringSystem"%>
 <%@page import="java.util.List"%>
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <%
