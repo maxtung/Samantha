@@ -32,6 +32,7 @@ import org.apdplat.word.segmentation.Word;
  */
 public class Evidence {
 
+    private String source;
     private String title;
     private String snippet;
     private double score = 1.0;
@@ -68,6 +69,10 @@ public class Evidence {
         }
         return result;
     }
+
+    public String getSource() { return source;}
+
+    public void setSource(String source) {this.source = source;}
 
     public String getTitle() {
         return title;

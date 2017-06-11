@@ -8,11 +8,20 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.apache.commons.httpclient.DefaultHttpMethodRetryHandler;
+import org.apache.commons.httpclient.HttpClient;
+import org.apache.commons.httpclient.HttpStatus;
+import org.apache.commons.httpclient.methods.GetMethod;
+import org.apache.commons.httpclient.params.HttpMethodParams;
 import org.apdplat.qa.files.FilesConfig;
 import org.apdplat.qa.model.Evidence;
 import org.apdplat.qa.model.Question;
 import org.apdplat.qa.system.QuestionAnsweringSystem;
 import org.apdplat.qa.util.MySQLUtils;
+import org.apdplat.qa.util.Tools;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -21,11 +30,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 从Baidu搜索问题的证据
+ * Created by dongbing on 2017/6/11.
  */
-public class BaiduDataSource implements DataSource {
+public class MultiSearchEngineDataSource  implements DataSource  {
 
-    private static final Logger LOG = LoggerFactory.getLogger(BaiduDataSource.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MultiSearchEngineDataSource.class);
 
     private static final String ACCEPT = "text/html, */*; q=0.01";
     private static final String ENCODING = "gzip, deflate";
@@ -48,14 +57,17 @@ public class BaiduDataSource implements DataSource {
     //
     private final List<String> files = new ArrayList<>();
 
-    public BaiduDataSource() {
+
+
+    public MultiSearchEngineDataSource() {
+        LOG.info("Loading MultiSearchEngineDataSource");
     }
 
-    public BaiduDataSource(String file) {
+    public MultiSearchEngineDataSource(String file) {
         this.files.add(file);
     }
 
-    public BaiduDataSource(List<String> files) {
+    public MultiSearchEngineDataSource(List<String> files) {
         this.files.addAll(files);
     }
 
@@ -137,7 +149,7 @@ public class BaiduDataSource implements DataSource {
                     }
                 }
             }
-            LOG.info("从Question文件" + file + "中加载Question，从baidu中检索到了 " + questions.size() + " 个Question");
+            LOG.info("从Question文件" + file + "中加载Question，从多个搜索引擎中检索到了 " + questions.size() + " 个Question");
         }
         return questions;
     }
@@ -145,7 +157,7 @@ public class BaiduDataSource implements DataSource {
     @Override
     public Question getAndAnswerQuestion(String questionStr, QuestionAnsweringSystem questionAnsweringSystem) {
         //1、先从本地缓存里面找
-        Question question = MySQLUtils.getQuestionFromDatabase("baidu:", questionStr);
+        Question question = MySQLUtils.getQuestionFromDatabase("multi-se:", questionStr);
         if (question != null) {
             //数据库中存在
             LOG.info("从数据库中查询到Question：" + question.getQuestion());
@@ -156,7 +168,7 @@ public class BaiduDataSource implements DataSource {
             return question;
         }
 
-        //2、本地缓存里面没有再查询baidu
+        //2、本地缓存里面没有再查询搜索引擎
         question = new Question();
         question.setQuestion(questionStr);
 
@@ -167,27 +179,46 @@ public class BaiduDataSource implements DataSource {
             LOG.error("url构造失败", e);
             return null;
         }
-        String referer = "http://www.baidu.com/";
-        for (int i = 0; i < PAGE; i++) {
-            query = "http://www.baidu.com/s?tn=monline_5_dg&ie=utf-8&wd=" + query+"&oq="+query+"&usm=3&f=8&bs="+query+"&rsv_bp=1&rsv_sug3=1&rsv_sug4=141&rsv_sug1=1&rsv_sug=1&pn=" + i * PAGESIZE;
-            LOG.debug(query);
-            List<Evidence> evidences = searchBaidu(query, referer);
-            referer = query;
-            if (evidences != null && evidences.size() > 0) {
-                question.addEvidences(evidences);
-            } else {
-                LOG.error("结果页 " + (i + 1) + " 没有搜索到结果");
-                break;
-            }
-        }
+
+        queryBaidu(question, query, PAGE, PAGESIZE);
+
+        queryGoogle(question, query, PAGE, PAGESIZE);
+
+//        String referer = "http://www.baidu.com/";
+//        for (int i = 0; i < PAGE; i++) {
+//            query = "http://www.baidu.com/s?tn=monline_5_dg&ie=utf-8&wd=" + query+"&oq="+query+"&usm=3&f=8&bs="+query+"&rsv_bp=1&rsv_sug3=1&rsv_sug4=141&rsv_sug1=1&rsv_sug=1&pn=" + i * PAGESIZE;
+//            LOG.debug(query);
+//            List<Evidence> evidences = searchBaidu(query, referer);
+//            referer = query;
+//            if (evidences != null && evidences.size() > 0) {
+//                question.addEvidences(evidences);
+//            } else {
+//                LOG.error("结果页 " + (i + 1) + " 没有搜索到结果");
+//                break;
+//            }
+//        }
+
+
+//        for (int i = 0; i < PAGE; i++) {
+//            query = "http://ajax.googleapis.com/ajax/services/search/web?start=" + i * PAGESIZE + "&rsz=large&v=1.0&q=" + query;
+//            List<Evidence> evidences = search(query);
+//            if (evidences.size() > 0) {
+//                question.addEvidences(evidences);
+//            } else {
+//                LOG.error("结果页 " + (i + 1) + " 没有搜索到结果");
+//                break;
+//            }
+//        }
+
+
         LOG.info("Question：" + question.getQuestion() + " 搜索到Evidence " + question.getEvidences().size() + " 条");
         if (question.getEvidences().isEmpty()) {
             return null;
         }
-        //3、将baidu查询结果加入本地缓存
+        //3、将搜索查询结果加入本地缓存
         if (question.getEvidences().size() > 7) {
             LOG.info("将Question：" + question.getQuestion() + " 加入MySQL数据库");
-            MySQLUtils.saveQuestionToDatabase("baidu:", question);
+            MySQLUtils.saveQuestionToDatabase("multi-se:", question);
         }
 
         //回答问题
@@ -195,6 +226,42 @@ public class BaiduDataSource implements DataSource {
             questionAnsweringSystem.answerQuestion(question);
         }
         return question;
+    }
+
+    private void queryBaidu(Question question, String condition, int page, int pageSize)
+    {
+        LOG.info("Searching from baidu.");
+        String referer = "http://www.baidu.com/";
+        for (int i = 0; i < page; i++) {
+            String queryUrl = "http://www.baidu.com/s?tn=monline_5_dg&ie=utf-8&wd=" + condition+"&oq="+condition+"&usm=3&f=8&bs="+condition+"&rsv_bp=1&rsv_sug3=1&rsv_sug4=141&rsv_sug1=1&rsv_sug=1&pn=" + i * pageSize;
+            LOG.debug(queryUrl);
+            List<Evidence> evidences = searchBaidu(queryUrl, referer);
+            referer = queryUrl;
+            if (evidences != null && evidences.size() > 0) {
+                question.addEvidences(evidences);
+            } else {
+                LOG.error("结果页 " + (i + 1) + " 没有搜索到结果");
+                break;
+            }
+            LOG.info("evidence count from baidu: " + evidences.size());
+        }
+
+    }
+
+    private void queryGoogle(Question question, String condition, int page, int pageSize) {
+        LOG.info("Searching from Google.");
+        for (int i = 0; i < page; i++) {
+            String queryUrl = "http://ajax.googleapis.com/ajax/services/search/web?start=" + i * pageSize + "&rsz=large&v=1.0&q=" + condition;
+            List<Evidence> evidences = searchGoogle(queryUrl);
+            if (evidences.size() > 0) {
+                question.addEvidences(evidences);
+            } else {
+                LOG.error("结果页 " + (i + 1) + " 没有搜索到结果");
+                break;
+            }
+
+            LOG.info("evidence count from google: " + evidences.size());
+        }
     }
 
     private List<Evidence> searchBaidu(String url, String referer) {
@@ -233,9 +300,10 @@ public class BaiduDataSource implements DataSource {
                     continue;
                 }
                 Evidence evidence = new Evidence();
+                evidence.setSource("BAIDU");
                 evidence.setTitle(title);
                 evidence.setSnippet(snippet);
-                
+
                 evidences.add(evidence);
             }
         } catch (Exception ex) {
@@ -244,8 +312,69 @@ public class BaiduDataSource implements DataSource {
         return evidences;
     }
 
+    private List<Evidence> searchGoogle(String query) {
+        List<Evidence> evidences = new ArrayList<>();
+        try {
+            HttpClient httpClient = new HttpClient();
+            GetMethod getMethod = new GetMethod(query);
+
+            getMethod.getParams().setParameter(HttpMethodParams.RETRY_HANDLER,
+                    new DefaultHttpMethodRetryHandler());
+
+            int statusCode = httpClient.executeMethod(getMethod);
+            if (statusCode != HttpStatus.SC_OK) {
+                LOG.error("Method failed: " + getMethod.getStatusLine());
+            }
+            byte[] responseBody = getMethod.getResponseBody();
+            String response = new String(responseBody, "UTF-8");
+            LOG.info("GOOGLE Response: " + response);
+
+            LOG.debug("搜索返回数据：" + response);
+            JSONObject json = new JSONObject(response);
+            String totalResult = json.getJSONObject("responseData").getJSONObject("cursor").getString("estimatedResultCount");
+            int totalResultCount = Integer.parseInt(totalResult);
+            LOG.info("搜索返回记录数： " + totalResultCount);
+
+            JSONArray results = json.getJSONObject("responseData").getJSONArray("results");
+
+            LOG.debug(" Results:");
+            for (int i = 0; i < results.length(); i++) {
+                Evidence evidence = new Evidence();
+                JSONObject result = results.getJSONObject(i);
+                String title = result.getString("titleNoFormatting");
+                LOG.debug(title);
+                evidence.setTitle(title);
+                evidence.setSource("GOOGLE");
+                if (SUMMARY) {
+                    String content = result.get("content").toString();
+                    content = content.replaceAll("<b>", "");
+                    content = content.replaceAll("</b>", "");
+                    content = content.replaceAll("\\.\\.\\.", "");
+                    LOG.debug(content);
+                    evidence.setSnippet(content);
+                } else {
+                    //从URL中提取正文
+                    String url = result.get("url").toString();
+                    String content = Tools.getHTMLContent(url);
+                    if (content == null) {
+                        content = result.get("content").toString();
+                        content = content.replaceAll("<b>", "");
+                        content = content.replaceAll("</b>", "");
+                        content = content.replaceAll("\\.\\.\\.", "");
+                    }
+                    evidence.setSnippet(content);
+                    LOG.debug(content);
+                }
+                evidences.add(evidence);
+            }
+        } catch (Exception e) {
+            LOG.error("执行搜索失败：", e);
+        }
+        return evidences;
+    }
+
     public static void main(String args[]) {
-        Question question = new BaiduDataSource(FilesConfig.personNameQuestions).getQuestion("APDPlat的创始人是谁？");
+        Question question = new MultiSearchEngineDataSource(FilesConfig.personNameQuestions).getQuestion("APDPlat的创始人是谁？");
         LOG.info(question.toString());
     }
 }

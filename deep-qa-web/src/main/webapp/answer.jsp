@@ -127,7 +127,7 @@ for (Evidence evidence : question.getEvidences()) {
             <p class="text-primary"> 页面 <%=j%> : </p>
         </div>
         <div class="col-md-11">
-            <p class="text-muted"><%=evidence.getTitle()%></p>
+            <p class="text-muted"><%=evidence.getSource() + ": " + evidence.getTitle()%></p>
         </div>
     </div>
 
